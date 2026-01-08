@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk, simpledialog
 import tempfile, os, smtplib, subprocess, time, sqlite3, sys
+from datetime import datetime
 
 # Helper to load resources/data when bundled with PyInstaller
 def resource_path(rel):
@@ -99,9 +100,21 @@ def rebuild_bill_area():
     """Clear and re-render the textArea contents based on current cart."""
     global totalPrice
     global discountPrice, discountTax, discountCoupon
+    # Configure a tag for the header
+    textArea.tag_configure("header", font=("Arial", 15, "bold"),  justify="center")  # Center alignment
+    # Configure a tag for centered text
+    textArea.tag_configure("center", justify="center")
+
+
     textArea.delete(1.0, tk.END)
-    textArea.insert(1.0, '\t   ***Medical Store***\n\n')
-    textArea.insert(tk.END, '\tContact # :0311-5552866\n\tEmail:mansoorpay@gmail.com\n')
+    # textArea.insert(1.0, '\t   ***Medical Store***\n\n')
+    textArea.insert("1.0", "MEDICAL STORE\n\n", "header")
+    textArea.insert(tk.END, "Odherwal Chowk near Shall Petrolium\n", "center")
+    textArea.insert(tk.END, "Chakwal\n", "center")
+    textArea.insert(tk.END, "NTN#9735369-6  Ph#0336-2127777\n", "center")
+    textArea.insert(tk.END, "LIC#DSL-01-372-0008-99154p\n", "center")
+    textArea.insert(tk.END, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n', "center")
+    # textArea.insert(tk.END, '\tContact # :0311-5552866\n\tEmail:mansoorpay@gmail.com\n')
     textArea.insert(tk.END, '========================================\n')
     textArea.insert(tk.END, ' Item \t     Unit \t  Quantity\t   Total \n')
     textArea.insert(tk.END, ' Name \t     Price \t\t         Price \n')
