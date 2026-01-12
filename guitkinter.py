@@ -1,27 +1,20 @@
 #
 import tkinter as tk
 from tkinter import messagebox, ttk, simpledialog
-import tempfile, os, smtplib, subprocess, time, sqlite3, sys
+import tempfile, os, smtplib, sqlite3
 from datetime import datetime
+from escpos.printer import Usb
+import win32print
+import win32ui
 
-# Helper to load resources/data when bundled with PyInstaller
-def resource_path(rel):
-    # If bundled by PyInstaller, data files are in sys._MEIPASS
-    if getattr(sys, 'frozen', False):
-        base = sys._MEIPASS
-    else:
-        base = os.path.dirname(__file__)
-    return os.path.join(base, rel)
-
-# Return a writable path for the database (next to the executable or script)
-def get_db_path():
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(__file__)
-    return os.path.join(base, 'medicspharmacy.db')
 
 #Fuctionality part\
+
+
+def logout():
+    pass
+    # root.destroy()
+    # os.system('python login.py')
 
 # Barcode reader
 def process_barcode(event=None):
@@ -100,6 +93,7 @@ def rebuild_bill_area():
     """Clear and re-render the textArea contents based on current cart."""
     global totalPrice
     global discountPrice, discountTax, discountCoupon
+
     # Configure a tag for the header
     textArea.tag_configure("header", font=("Arial", 15, "bold"),  justify="center")  # Center alignment
     # Configure a tag for centered text
@@ -164,26 +158,14 @@ def rebuild_bill_area():
     textArea.insert(tk.END, 'Developed by Django Softwate PVT\n')
     textArea.insert(tk.END, 'Contact:92-311-5552866  Email:mansoorpay@gmail.com\n')
 
+def get_db_path():
+    """
+    Returns the full path to the SQLite database file.
+    Keeps DB path logic separate and reusable.
+    """
+    return os.path.join(os.path.dirname(__file__), "medicspharmacy.db")
 
 
-
-def logout():
-    # Attempt to launch registration.py if it exists; otherwise warn and just close
-    reg = resource_path('registration.py')
-    if not os.path.exists(reg):
-        try:
-            root.destroy()
-        except Exception:
-            pass
-        messagebox.showwarning('Missing file', 'registration.py not found; cannot launch registration.')
-        return
-
-    # Close main window and launch registration
-    root.destroy()
-    try:
-        subprocess.run([sys.executable, reg])
-    except Exception:
-        subprocess.run(["python", reg])
 
 def connectandcreatetable():
     # Connect to SQLite database and ensure schema has a barcode column
@@ -288,10 +270,7 @@ def open_inventory_window():
     
     readintotreeview()
     
-        
-
-        
-
+    # Function to open new entry window
     def open_new_entry_window():
         new_entry_window = tk.Toplevel(inventory_window)
         new_entry_window.title("New Entry")
@@ -373,9 +352,6 @@ def open_inventory_window():
         readitems()
 
 
-    # def update_item():
-    #     pass  # Add your logic here
-
     def update_item():
         selected_item = tree.selection()[0]
         values = tree.item(selected_item, 'values')
@@ -440,11 +416,6 @@ def open_inventory_window():
 
         tk.Button(editentryFrame, text="Save", font=('arial', 12, 'bold'), background="gray20", foreground='white', bd=5, width=8, pady=10,command=save_changes).grid(row=5, column=0, columnspan=2, pady=10)
 
-
-
-
-
-
     inventorybuttonFrame = tk.Frame(inventory_window, background='gray20', bd=8, relief=tk.GROOVE)
     inventorybuttonFrame.pack(fill=tk.X, pady=5)
 
@@ -461,19 +432,8 @@ def open_inventory_window():
     update_button = tk.Button(inventorybuttonFrame, text="Update", font=('arial', 16, 'bold'), background="gray20", foreground='white', bd=5, width=8, pady=10, command=update_item)
     update_button.pack(side='left')
 
-    print_button = tk.Button(inventorybuttonFrame, text="Print", font=('arial', 16, 'bold'), background="gray20", foreground='white', bd=5, width=8, pady=10, command=update_item)
+    print_button = tk.Button(inventorybuttonFrame, text="Print", font=('arial', 16, 'bold'), background="gray20", foreground='white', bd=5, width=8, pady=10, command=print_bill)
     print_button.pack(side='left')
-
-
-
-
-
-# def print_receipt():
-
-#     # Adjust the USB parameters according to your printer's specifications
-#     p = Usb(0x04b8, 0x0202, 0)
-#     p.text("Hello, World!\n")
-#     p.cut()
 
 
 
@@ -562,82 +522,101 @@ def send_email():
         root1.mainloop()
 
 
-
-# Thermal printer support (optional)
-try:
-    from escpos.printer import Usb
-    ESC_POS_AVAILABLE = True
-except Exception:
-    ESC_POS_AVAILABLE = False
-
-PRINTER_VENDOR = 0x04b8
-PRINTER_PRODUCT = 0x0202
-PRINTER_INTERFACE = 0
-
-
-def get_receipt_text():
+def get_receipt_text(cart, totalPrice, discount):
+    print("Generating receipt text...")
     lines = []
-    lines.append('\t   ***Medical Store***')
-    lines.append('\tContact # :0311-5552866')
-    lines.append('\tEmail:mansoorpay@gmail.com')
-    lines.append('========================================')
-    lines.append(' Item     Unit    Quantity    Total')
 
+    # ===== Header (without MEDICAL STORE, handled in ESC/POS) =====
+    lines.append("Odherwal Chowk near Shall Petrolium")
+    lines.append("Chakwal")
+    lines.append("NTN#9735369-6   Ph#0336-2127777")
+    lines.append("LIC#DSL-01-372-0008-99154p")
+    lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("=" * 40)
+
+    # ===== Column Titles =====
+    lines.append(f"{'Item':12}{'Unit':>6}{'Qty':>4}{'Total':>8}")
+    lines.append("=" * 40)
+
+    # ===== Items =====
     for v in cart.values():
-        name = v['name']
+        name = v['name'][:12]   # truncate to fit
         price = v['price']
         qty = v['qty']
         line_total = int(price * qty)
-        lines.append(f'{name}  {price}  x{qty}  {line_total}')
+        lines.append(f"{name:12}{price:>6}{qty:>4}{line_total:>8}")
 
-    lines.append('========================================')
-    lines.append(f'Total: {totalPrice} Rs')
-    lines.append('----------------------------------------')
-    lines.append('Developed by Django Softwate PVT')
-    return '\n'.join(lines)
+    lines.append("=" * 40)
+
+    # ===== Totals =====
+    lines.append(f"{'Subtotal':20}{totalPrice:>10} Rs")
+    if discount > 0:
+        lines.append(f"{'Discount':20}-{discount:>9} Rs")
+        lines.append(f"{'Grand Total':20}{totalPrice-discount:>10} Rs")
+    else:
+        lines.append(f"{'Grand Total':20}{totalPrice:>10} Rs")
+
+    lines.append("-" * 40)
+
+    # ===== Footer (will be centered in ESC/POS) =====
+    lines.append("Developed by Django Software PVT")
+    lines.append("Thank you for your purchase!")
+
+    return "\n".join(lines)
 
 
 def print_receipt_thermal():
-    if not cart:
-        messagebox.showerror('Error', 'Nothing to print')
-        return False
-
-    if not ESC_POS_AVAILABLE:
-        return False
-
     try:
-        p = Usb(PRINTER_VENDOR, PRINTER_PRODUCT, PRINTER_INTERFACE)
-        p.text(get_receipt_text() + '\n')
-        try:
-            p.cut()
-        except Exception:
-            pass
-        messagebox.showinfo('Printed', 'Receipt sent to thermal printer')
-        return True
+        receipt_text = get_receipt_text(cart, totalPrice, discountPrice + discountCoupon)
+
+        ESC = b'\x1b'
+        GS  = b'\x1d'
+
+        data = b""
+        data += ESC + b"@"                      # Initialize printer
+
+        # ===== Big Bold Title =====
+        data += ESC + b"a" + b"\x01"            # Center alignment
+        data += ESC + b"E" + b"\x01"            # Bold on
+        data += ESC + b"!" + b"\x10"            # Double height & width
+        data += b"MEDICAL STORE\n"
+        data += ESC + b"!" + b"\x00"            # Normal size
+        data += ESC + b"E" + b"\x00"            # Bold off
+
+        # ===== Centered Header (address, date) =====
+        data += ESC + b"a" + b"\x01"            # Center alignment
+        header_lines = receipt_text.split("\n")[0:5]  # first 5 lines
+        for line in header_lines:
+            data += line.encode("ascii", "ignore") + b"\n"
+
+        # ===== Left-aligned body (items, totals) =====
+        data += ESC + b"a" + b"\x00"
+        body_lines = receipt_text.split("\n")[5:-2]   # middle lines
+        for line in body_lines:
+            data += line.encode("ascii", "ignore") + b"\n"
+
+        # ===== Centered Footer =====
+        data += ESC + b"a" + b"\x01"
+        footer_lines = receipt_text.split("\n")[-2:]
+        for line in footer_lines:
+            data += line.encode("ascii", "ignore") + b"\n"
+
+        # Feed and cut
+        data += b"\n\n"
+        data += GS + b"V" + b"\x00"
+
+        # Send to printer
+        printer_name = win32print.GetDefaultPrinter()
+        hPrinter = win32print.OpenPrinter(printer_name)
+        hJob = win32print.StartDocPrinter(hPrinter, 1, ("Receipt", None, "RAW"))
+        win32print.StartPagePrinter(hPrinter)
+        win32print.WritePrinter(hPrinter, data)
+        win32print.EndPagePrinter(hPrinter)
+        win32print.EndDocPrinter(hPrinter)
+        win32print.ClosePrinter(hPrinter)
+
     except Exception as e:
-        messagebox.showerror('Print Error', f'Failed to print to thermal printer: {e}')
-        return False
-
-
-def print_bill():
-    # Try thermal first
-    if print_receipt_thermal():
-        return
-
-    # Fallback to system print
-    if textArea.get(1.0,tk.END) == '\n' or textArea.get(1.0,tk.END).strip() == '':
-        messagebox.showerror('Error','Nothing to print')
-    else:
-        file= tempfile.mktemp('.txt')
-        open(file, 'w', encoding='utf-8').write(textArea.get(1.0,tk.END))
-        try:
-            os.startfile(file,'print')
-        except Exception as e:
-            messagebox.showerror('Print Error', f'Failed to send to system printer: {e}')
-
-
-# Self-test utility: simulate two barcode scans, verify aggregation and DB decrement, and offer to print
-
+        print(f"Print Error: {e}")
 
 def clearAll():
     global totalPrice, cart
@@ -802,7 +781,6 @@ rebuild_bill_area()
 readitems()
 
 
-
 #Bill menu frame
 
 billmenuframe = tk.LabelFrame(projectPanel,text="Controls",font=('times new roman',15,'bold'),foreground='gold',bd=8,relief=tk.GROOVE,background='gray20')
@@ -821,7 +799,7 @@ emailbutton=tk.Button(billmenuframe,text="Email",font=('arial',16,'bold'),backgr
 emailbutton.grid(row=2,column=0,pady=5,padx=10)
 
 printbutton=tk.Button(billmenuframe,text="Print",font=('arial',16,'bold'),background="gray20",
-                foreground='white',bd=5,width=8,pady=10,command=print_bill)
+                foreground='white',bd=5,width=8,pady=10,command=print_receipt_thermal)
 printbutton.grid(row=3,column=0,pady=5,padx=10)
 
 clearbutton=tk.Button(billmenuframe,text="Clear",font=('arial',16,'bold'),background="gray20",
@@ -853,102 +831,7 @@ discount_price_label.grid(row=0, column=4, padx=20, pady=2)
 discount_coupon = tk.Entry(taxFrame, font=('arial',15), bd=7, width=18)
 discount_coupon.grid(row=0, column=5, padx=8)
 
-# # Inventory button (kept for convenience)
-# discount_inventory_button = tk.Button(taxFrame, text="Inventory", font=('arial',12,'bold'), bd=7, width=10, command=open_inventory_window)
-# discount_inventory_button.grid(row=0, column=6, padx=20)
-
-def run_headless_tests():
-    """Automated runtime checks that exercise DB and billing logic.
-    This function is safe to run in-place and will not modify user's real data except creating test rows that are cleaned up afterwards.
-    It inserts a pair of test items, simulates adding them to the cart, applies sample discounts/tax/coupon, and verifies totals."""
-    results = []
-    test_barcodes = [f"TEST-BARCODE-{int(time.time())}", f"TEST-BARCODE-{int(time.time())+1}"]
-    # Ensure DB exists
-    db = get_db_path()
-    conn = sqlite3.connect(db)
-    cursor = conn.cursor()
-
-    try:
-        # Create two test items (use unique barcodes)
-        cursor.execute("INSERT INTO inventory (medicine_name, expiry, barcode, batch_no, quantity, price) VALUES (?, ?, ?, ?, ?, ?)",
-                       ("TestItemA", "2099-01-01", test_barcodes[0], "BATCHA", 50, 100.0))
-        id_a = cursor.lastrowid
-        cursor.execute("INSERT INTO inventory (medicine_name, expiry, barcode, batch_no, quantity, price) VALUES (?, ?, ?, ?, ?, ?)",
-                       ("TestItemB", "2099-01-01", test_barcodes[1], "BATCHB", 50, 200.0))
-        id_b = cursor.lastrowid
-        conn.commit()
-
-        # Clear any existing cart
-        cart.clear()
-
-        # Add items to cart via add_item_to_cart (simulate two units of A and one unit of B)
-        add_item_to_cart(id_a, "TestItemA", 100.0, qty=2)
-        add_item_to_cart(id_b, "TestItemB", 200.0, qty=1)
-
-        # Force rebuild and capture totals
-        rebuild_bill_area()
-
-        computed_total = totalPrice
-        expected_total = 2 * 100 + 1 * 200
-        results.append(("total_check", computed_total == expected_total, computed_total, expected_total))
-
-        # Test discount/tax/coupon math using the widgets (if present)
-        # Put 10% discount, 5% tax, 0% coupon
-        try:
-            discount_entry.delete(0, tk.END); discount_entry.insert(0, "10")
-            discount_tax.delete(0, tk.END); discount_tax.insert(0, "5")
-            discount_coupon.delete(0, tk.END); discount_coupon.insert(0, "0")
-        except Exception:
-            # If widgets unavailable, simulate values directly
-            discount_entry_value = 10
-            discount_tax_value = 5
-            discount_coupon_value = 0
-        rebuild_bill_area()
-
-        # Compute expected monetary values
-        d = (expected_total * 10) / 100
-        t = (expected_total * 5) / 100
-        c = (expected_total * 0) / 100
-        expected_net = expected_total + t - d - c
-
-        # Extract net from textArea
-        text = textArea.get('1.0', tk.END)
-        net_line = [ln for ln in text.splitlines() if ln.strip().startswith('Net Total')]
-        net_val = None
-        if net_line:
-            try:
-                net_val = float(net_line[0].split()[-2])
-            except Exception:
-                net_val = None
-        results.append(("net_check", abs((net_val or 0) - expected_net) < 0.01, net_val, expected_net))
-
-        # Clean up: remove inserted test rows
-        cursor.execute("DELETE FROM inventory WHERE id IN (?, ?)", (id_a, id_b))
-        conn.commit()
-
-    except Exception as e:
-        results.append(("exception", False, str(e)))
-    finally:
-        conn.close()
-
-    # Report concise results
-    ok = all(r[1] for r in results)
-    summary = '\n'.join([f"{r[0]}: {'PASS' if r[1] else 'FAIL'} ({r[2: ]})" for r in results])
-    print('HEADLESS TEST SUMMARY:')
-    print(summary)
-    if not ok:
-        messagebox.showerror('Headless tests failed', summary)
-    else:
-        messagebox.showinfo('Headless tests passed', summary)
-    return ok
 
 
-if __name__ == '__main__':
-    # If script invoked with --headless-test, run tests and exit
-    if '--headless-test' in sys.argv:
-        # Ensure GUI is initialized (widgets created above), then run tests
-        ok = run_headless_tests()
-        # If running as built EXE, exit after tests
-        sys.exit(0 if ok else 2)
 
-    root.mainloop()
+root.mainloop()
