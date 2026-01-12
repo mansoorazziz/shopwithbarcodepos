@@ -523,7 +523,7 @@ def send_email():
 
 
 def get_receipt_text(cart, totalPrice, discount):
-    print("Generating receipt text...")
+    # print("Generating receipt text...")
     lines = []
 
     # ===== Header (without MEDICAL STORE, handled in ESC/POS) =====
@@ -559,11 +559,67 @@ def get_receipt_text(cart, totalPrice, discount):
     lines.append("-" * 40)
 
     # ===== Footer (will be centered in ESC/POS) =====
-    lines.append("Developed by Django Software PVT")
+    lines.append("Developed by Aziqsolutions")
     lines.append("Thank you for your purchase!")
 
     return "\n".join(lines)
 
+
+# def print_receipt_thermal():
+#     try:
+#         receipt_text = get_receipt_text(cart, totalPrice, discountPrice + discountCoupon)
+
+#         ESC = b'\x1b'
+#         GS  = b'\x1d'
+
+#         data = b""
+#         data += ESC + b"@"                      # Initialize printer
+
+#         # ===== Big Bold Title =====
+#         data += ESC + b"a" + b"\x01"            # Center alignment
+#         data += ESC + b"E" + b"\x01"            # Bold on
+#         data += ESC + b"!" + b"\x10"            # Double height & width
+#         data += b"MEDICAL STORE\n"
+#         data += ESC + b"!" + b"\x00"            # Normal size
+#         data += ESC + b"E" + b"\x00"            # Bold off
+
+#         # ===== Centered Header (address, date) =====
+#         data += ESC + b"a" + b"\x01"            # Center alignment
+#         header_lines = receipt_text.split("\n")[0:5]  # first 5 lines
+#         for line in header_lines:
+#             data += line.encode("ascii", "ignore") + b"\n"
+
+#         # ===== Left-aligned body (items, totals) =====
+#         data += ESC + b"a" + b"\x00"
+#         body_lines = receipt_text.split("\n")[5:-2]   # middle lines
+#         for line in body_lines:
+#             data += line.encode("ascii", "ignore") + b"\n"
+
+#         # ===== Centered Footer =====
+#         data += ESC + b"a" + b"\x01"
+#         footer_lines = receipt_text.split("\n")[-2:]
+#         for line in footer_lines:
+#             data += line.encode("ascii", "ignore") + b"\n"
+
+#         # Feed and cut
+#         data += b"\n\n"
+#         data += GS + b"V" + b"\x00"
+
+#         # Send to printer
+#         printer_name = win32print.GetDefaultPrinter()
+#         hPrinter = win32print.OpenPrinter(printer_name)
+#         hJob = win32print.StartDocPrinter(hPrinter, 1, ("Receipt", None, "RAW"))
+#         win32print.StartPagePrinter(hPrinter)
+#         win32print.WritePrinter(hPrinter, data)
+#         win32print.EndPagePrinter(hPrinter)
+#         win32print.EndDocPrinter(hPrinter)
+#         win32print.ClosePrinter(hPrinter)
+
+#     except Exception as e:
+#         print(f"Print Error: {e}")
+
+import win32print
+from datetime import datetime
 
 def print_receipt_thermal():
     try:
@@ -583,15 +639,15 @@ def print_receipt_thermal():
         data += ESC + b"!" + b"\x00"            # Normal size
         data += ESC + b"E" + b"\x00"            # Bold off
 
-        # ===== Centered Header (address, date) =====
-        data += ESC + b"a" + b"\x01"            # Center alignment
-        header_lines = receipt_text.split("\n")[0:5]  # first 5 lines
+        # ===== Centered Header =====
+        data += ESC + b"a" + b"\x01"
+        header_lines = receipt_text.split("\n")[0:5]
         for line in header_lines:
             data += line.encode("ascii", "ignore") + b"\n"
 
-        # ===== Left-aligned body (items, totals) =====
+        # ===== Left-aligned Body =====
         data += ESC + b"a" + b"\x00"
-        body_lines = receipt_text.split("\n")[5:-2]   # middle lines
+        body_lines = receipt_text.split("\n")[5:-2]
         for line in body_lines:
             data += line.encode("ascii", "ignore") + b"\n"
 
@@ -600,6 +656,22 @@ def print_receipt_thermal():
         footer_lines = receipt_text.split("\n")[-2:]
         for line in footer_lines:
             data += line.encode("ascii", "ignore") + b"\n"
+
+        # ===== QR Code (your website) =====
+        qr_data = "https://www.aziqsolutions.com"
+        qr_bytes = qr_data.encode("utf-8")
+
+        # Select model
+        data += GS + b"(k" + b"\x04\x00" + b"1A" + b"\x02\x00"
+        # Set size of module (1–16)
+        data += GS + b"(k" + b"\x03\x00" + b"1C" + b"\x06"
+        # Store data
+        length = len(qr_bytes) + 3
+        pL = length % 256
+        pH = length // 256
+        data += GS + b"(k" + bytes([pL, pH]) + b"1P0" + qr_bytes
+        # Print QR code
+        data += GS + b"(k" + b"\x03\x00" + b"1Q0"
 
         # Feed and cut
         data += b"\n\n"
